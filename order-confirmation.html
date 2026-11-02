@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Order Confirmation - ShopNow</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <header class="site-header">
+        <h1 class="logo">ShopNow</h1>
+        <nav class="main-nav">
+            <a href="index.html">Home</a>
+            <a href="products.html">Products</a>
+            <a href="cart.html">Cart</a>
+            <a href="about.html">About</a>
+            <span id="auth-nav-slot"></span>
+        </nav>
+    </header>
+
+    <main style="padding: 2rem; text-align: center;">
+        <h1>Thank You for Your Order!</h1>
+        <h2>Order Number: <span id="order-number"></span></h2>
+        <h2>Ordered Products:</h2>
+        <div id="items" style="max-width: 500px; margin: 1rem auto;"></div>
+        <h3 id="order-total" style="margin-top: 1rem;"></h3>
+    </main>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="js/app.js"></script>
+    <script>
+        const orderId = new URLSearchParams(window.location.search).get("id");
+
+        async function loadConfirmation() {
+            const { data: { user } } = await supabaseClient.auth.getUser();
+            if (!user || !orderId) {
+                window.location.href = "login.html";
+                return;
+            }
+
+            const { data: order, error: orderError } = await supabaseClient
+                .from("orderr")
+                .select("*")
+                .eq("order_id", orderId)
+                .single();
+
+            if (orderError || !order) {
+                alert("Order not found.");
+                return;
+            }
+
+            const { data: items, error } = await supabaseClient
+                .from("order_item")
+                .select("*, product(name)")
+                .eq("order_id", orderId);
+
+            if (error) {
+                alert(error.message);
+                return;
+            }
+
+            document.getElementById("order-number").textContent = orderId;
+            
+            const container = document.getElementById("items");
+            container.replaceChildren();
+            
+            items.forEach(item => {
+                const p = document.createElement("p");
+                const productName = item.product?.name ?? "Product";
+                p.textContent = `${productName} × ${item.quantity} — AED ${(item.price * item.quantity).toFixed(2)}`;
+                container.appendChild(p);
+            });
+
+            document.getElementById("order-total").textContent = `Total: AED ${Number(order.total).toFixed(2)}`;
+        }
+
+        loadConfirmation();
+    </script>
+</body>
+</html>

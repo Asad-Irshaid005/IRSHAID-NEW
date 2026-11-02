@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Checkout - ShopNow</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <header class="site-header">
+        <h1 class="logo">ShopNow</h1>
+        <nav class="main-nav">
+            <a href="index.html">Home</a>
+            <a href="products.html">Products</a>
+            <a href="cart.html">Cart</a>
+            <a href="about.html">About</a>
+            <span id="auth-nav-slot"></span>
+        </nav>
+    </header>
+    <main>
+        <form id="checkout-form">
+            <h2>Shipping Information</h2>
+            <label>Full Name:</label>
+            <input type="text" id="name" required>
+            <label>Address:</label>
+            <input type="text" id="address" required>
+            <label>Phone Number:</label>
+            <input type="tel" id="phone" required placeholder="+971501234567">
+            <button type="submit" id="place-order-btn">Place Order</button>
+        </form>
+    </main>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="js/app.js"></script>
+    <script>
+        requireLogin();
+
+        const checkoutForm = document.getElementById("checkout-form");
+        checkoutForm.addEventListener("submit", async (e) => {
+            e.preventDefault();
+            const name = document.getElementById("name").value.trim();
+            const address = document.getElementById("address").value.trim();
+            const rawPhone = document.getElementById("phone").value.trim();
+            const phone = rawPhone.replace(/\s+/g, '');
+
+            if (!name || !address) {
+                alert("Name and address are required.");
+                return;
+            }
+            if (!/^[0-9+]{7,15}$/.test(phone)) {
+                alert("Enter a valid phone number.");
+                return;
+            }
+
+            const placeOrderBtn = document.getElementById("place-order-btn");
+            placeOrderBtn.disabled = true;
+            placeOrderBtn.textContent = "Processing...";
+
+            try {
+                const { data: { user }, error: authError } = await supabaseClient.auth.getUser();
+                if (authError || !user) {
+                    window.location.href = "login.html";
+                    return;
+                }
+
+                const cart = getCart();
+                if (cart.length === 0) {
+                    alert("Your cart is empty.");
+                    placeOrderBtn.disabled = false;
+                    placeOrderBtn.textContent = "Place Order";
+                    return;
+                }
+
+                const subtotal = cart.reduce((sum, item) => sum + Number(item.price) * Number(item.quantity), 0);
+
+                const { data: order, error } = await supabaseClient
+                    .from("orderr")
+                    .insert([{
+                        customer_id: user.id,
+                        total: subtotal,
+                        status: "Paid"
+                    }])
+                    .select()
+                    .single();
+
+                if (error) {
+                    alert("Could not place order: " + error.message);
+                    placeOrderBtn.disabled = false;
+                    placeOrderBtn.textContent = "Place Order";
+                    return;
+                }
+
+                const items = cart.map(item => ({
+                    order_id: order.order_id,
+                    product_id: Number(item.product_id),
+                    quantity: Number(item.quantity),
+                    price: Number(item.price)
+                }));
+
+                const { error: itemsError } = await supabaseClient
+                    .from("order_item")
+                    .insert(items);
+
+                if (itemsError) {
+                    alert("Order created, but items failed: " + itemsError.message);
+                    placeOrderBtn.disabled = false;
+                    placeOrderBtn.textContent = "Place Order";
+                    return;
+                }
+
+                localStorage.removeItem("cart");
+                window.location.href = `order-confirmation.html?id=${order.order_id}`;
+            } catch (err) {
+                console.error(err);
+                alert("An unexpected error occurred.");
+                placeOrderBtn.disabled = false;
+                placeOrderBtn.textContent = "Place Order";
+            }
+        });
+    </script>
+</body>
+</html>   
