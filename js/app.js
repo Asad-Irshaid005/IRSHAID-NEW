@@ -22,7 +22,7 @@ function renderProducts(list) {
         const productId = prod.product_id;
         return `
             <div class="product">
-                <h3>${prod.name}</h3>
+                <h3>${escapeHtml(prod.name)}</h3>
                 <p>AED ${prod.price}</p>
                 <p>Stock: ${prod.stock}</p>
                 <button onclick='addToCart(${JSON.stringify(prod)})'>
@@ -99,6 +99,88 @@ if (document.getElementById("product-list")) {
     loadProducts();
 }
 
+// ---------------------------------------------------------------------
+// Lab 9: smart product search (keyword scoring, no AI)
+// ---------------------------------------------------------------------
+function escapeHtml(value) {
+    return String(value ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+}
+
+function scoreProduct(product, queryWords) {
+    const text = `${product.name} ${product.description || ""} ${product.category?.category_name || ""}`.toLowerCase();
+    let score = 0;
+    queryWords.forEach(word => {
+        if (text.includes(word)) score += 1;
+    });
+    return score;
+}
+
+function extractMaxPrice(query) {
+    const match = query.match(/(?:under|below)\s+(\d+)/i);
+    if (!match) return null;
+    return Number(match[1]);
+}
+
+function smartSearch(query, products) {
+    const maxPrice = extractMaxPrice(query);
+    const candidates = maxPrice
+        ? products.filter(p => Number(p.price) <= maxPrice)
+        : products;
+
+    // Remove the "under 500" part, drop short filler words, trim plurals
+    const queryWords = query
+        .toLowerCase()
+        .replace(/(?:under|below)\s+\d+/g, " ")
+        .split(/\s+/)
+        .filter(w => w.length > 2)
+        .map(w => (w.length > 3 && w.endsWith("s") ? w.slice(0, -1) : w));
+
+    // Only a price rule and no words: show the cheapest matches
+    if (queryWords.length === 0) {
+        return maxPrice
+            ? [...candidates].sort((a, b) => Number(a.price) - Number(b.price)).slice(0, 6)
+            : [];
+    }
+
+    return candidates
+        .map(p => ({ product: p, score: scoreProduct(p, queryWords) }))
+        .filter(r => r.score > 0)
+        .sort((a, b) => b.score - a.score)
+        .slice(0, 6)
+        .map(r => r.product);
+}
+
+const smartSearchBox = document.getElementById("smart-search");
+if (smartSearchBox) {
+    smartSearchBox.addEventListener("input", async e => {
+        const query = e.target.value.trim();
+        const resultsDiv = document.getElementById("smart-results");
+        if (query.length < 3) {
+            resultsDiv.innerHTML = "";
+            return;
+        }
+        if (allProducts.length === 0) {
+            const { data } = await supabaseClient
+                .from("product")
+                .select("*, category(category_name)");
+            allProducts = data || [];
+        }
+        const matches = smartSearch(query, allProducts);
+        resultsDiv.innerHTML = matches.length
+            ? matches.map(p => `
+                <p><a href="product-detail.html?id=${p.product_id}">${escapeHtml(p.name)}</a>
+                &mdash; AED ${Number(p.price).toFixed(2)}
+                <small>(${escapeHtml(p.category?.category_name || "")})</small></p>
+            `).join("")
+            : "<p>No matches. Try different words.</p>";
+    });
+}
+
 function getCart() {
     return JSON.parse(localStorage.getItem("cart") || "[]");
 }
@@ -163,7 +245,7 @@ function renderCart() {
         
         return `
             <div class="cart-item">
-                <span>${item.name}</span>
+                <span>${escapeHtml(item.name)}</span>
                 <input type="number" min="1" value="${qty}" onchange="updateQuantity(${item.product_id}, this.value); renderCart();">
                 <span>AED ${lineTotal.toFixed(2)}</span>
                 <button onclick="removeFromCart(${item.product_id}); renderCart();">Remove</button>
@@ -224,7 +306,7 @@ async function updateNavForAuth() {
     const navSlot = document.getElementById("auth-nav-slot");
     if (!navSlot) return;
     if (user) {
-        navSlot.innerHTML = `<span>Hi, ${user.email}</span> <a href="#" id="logout-link" onclick="logout(); return false;">Log out</a>`;
+        navSlot.innerHTML = `<span>Hi, ${escapeHtml(user.email)}</span> <a href="#" id="logout-link" onclick="logout(); return false;">Log out</a>`;
     } else {
         navSlot.innerHTML = '<a href="login.html">Login</a>';
     }

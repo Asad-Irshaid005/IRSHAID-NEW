@@ -32,8 +32,8 @@ async function loadProduct() {
     }
     
     detail.innerHTML = `
-        <h2>${data.name}</h2>
-        <p>${data.description ?? "No description available."}</p>
+        <h2>${escapeHtml(data.name)}</h2>
+        <p>${escapeHtml(data.description ?? "No description available.")}</p>
         <p><strong>Price:</strong> AED ${data.price}</p>
         <p><strong>Stock:</strong> ${data.stock}</p>
         <br>
